@@ -163,3 +163,100 @@ class EmbeddingManager:
             embedding = self.embed_text(text)
             embeddings.append(embedding)
         return embeddings
+
+
+# ==================== EMBEDDING MANAGER ====================
+
+class EmbeddingManager:
+    """Manage embeddings using Gemini's embedding model"""
+
+    def __init__(self, model_name: str = RAGConfig.EMBEDDING_MODEL):
+        self.model_name = model_name
+
+    def embed_text(self, text: str) -> List[float]:
+        """Generate embedding for a single text"""
+        result = genai.embed_content(
+            model=self.model_name,
+            content=text,
+            task_type="retrieval_document"
+        )
+        return result['embedding']
+
+    def embed_query(self, query: str) -> List[float]:
+        """Generate embedding for a query"""
+        result = genai.embed_content(
+            model=self.model_name,
+            content=query,
+            task_type="retrieval_query"
+        )
+        return result['embedding']
+
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """Generate embeddings for multiple texts"""
+        embeddings = []
+        for text in texts:
+            embedding = self.embed_text(text)
+            embeddings.append(embedding)
+        return embeddings
+
+# ==================== VECTOR STORE ====================
+class VectorStore:
+    """ChromaDB vector store manager"""
+
+    def __init__(self, collection_name: str = RAGConfig.COLLECTION_NAME):
+        self.client = chromadb.Client(Settings(
+            anonymized_telemetry=False,
+            allow_reset=True
+        ))
+        self.collection_name = collection_name
+        self.collection = None
+        self.embedding_manager = EmbeddingManager()
+
+    def create_collection(self, reset: bool = False):
+        """Create or get collection"""
+        if reset:
+            try:
+                self.client.delete_collection(name=self.collection_name)
+            except:
+                pass
+
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            metadata={"description": "RAG document embeddings"}
+        )
+
+    def add_documents(self, chunks: List[str], metadatas: List[Dict]):
+        """Add document chunks to the vector store"""
+        if not self.collection:
+            self.create_collection()
+
+        print(f"Generating embeddings for {len(chunks)} chunks...")
+        embeddings = self.embedding_manager.embed_batch(chunks)
+
+        # Generate IDs
+        ids = [f"chunk_{i}" for i in range(len(chunks))]
+
+        print(f"Adding {len(chunks)} chunks to ChromaDB...")
+        self.collection.add(
+            embeddings=embeddings,
+            documents=chunks,
+            metadatas=metadatas,
+            ids=ids
+        )
+        print("✓ Documents added successfully!")
+
+    def query(self, query_text: str, top_k: int = RAGConfig.TOP_K_RESULTS) -> Dict:
+        """Query the vector store"""
+        if not self.collection:
+            raise ValueError("Collection not initialized")
+
+        # Generate query embedding
+        query_embedding = self.embedding_manager.embed_query(query_text)
+
+        # Search
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=top_k
+        )
+
+        return results
