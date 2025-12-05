@@ -129,3 +129,37 @@ class CustomTextSplitter:
         sentences = re.split(r'(?<=[.!?])\s+', text)
         return [s.strip() for s in sentences if s.strip()]
 
+
+# ==================== EMBEDDING MANAGER ====================
+
+class EmbeddingManager:
+    """Manage embeddings using Gemini's embedding model"""
+
+    def __init__(self, model_name: str = RAGConfig.EMBEDDING_MODEL):
+        self.model_name = model_name
+
+    def embed_text(self, text: str) -> List[float]:
+        """Generate embedding for a single text"""
+        result = genai.embed_content(
+            model=self.model_name,
+            content=text,
+            task_type="retrieval_document"
+        )
+        return result['embedding']
+
+    def embed_query(self, query: str) -> List[float]:
+        """Generate embedding for a query"""
+        result = genai.embed_content(
+            model=self.model_name,
+            content=query,
+            task_type="retrieval_query"
+        )
+        return result['embedding']
+
+    def embed_batch(self, texts: List[str]) -> List[List[float]]:
+        """Generate embeddings for multiple texts"""
+        embeddings = []
+        for text in texts:
+            embedding = self.embed_text(text)
+            embeddings.append(embedding)
+        return embeddings
